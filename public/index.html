@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>NEVASTICK — Отправить пост</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --fg: #f0f0f0;
+    --fg2: #888;
+    --accent: #FE094F;
+    --accent2: #ff4d7d;
+    --font-mono: 'Space Mono', monospace;
+    --font-sans: 'Inter', sans-serif;
+    --radius: 4px;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
+
+  /* ── SCREENS ── */
+  .screen { display: none; flex-direction: column; min-height: 100vh; padding: 0 0 80px; }
+  .screen.active { display: flex; }
+
+  /* ── HEADER ── */
+  .app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg); z-index: 10;
+  }
+  .logo-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .logo-icon { width: 28px; height: 28px; }
+  .logo-text { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .2em; color: var(--fg); }
+  .logo-text span { color: var(--accent); }
+  .header-badge {
+    font-family: var(--font-mono); font-size: .5rem; letter-spacing: .15em;
+    color: var(--accent); border: 1px solid var(--accent); padding: 3px 8px;
+    text-transform: uppercase;
+  }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    margin: 20px; border: 1.5px dashed var(--border); background: var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 40px 20px; cursor: pointer; transition: border-color .2s;
+    position: relative; min-height: 200px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); }
+  .upload-zone svg { width: 32px; height: 32px; color: var(--fg2); }
+  .upload-zone p { font-size: .75rem; color: var(--fg2); letter-spacing: .05em; text-align: center; }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* ── PHOTO GRID ── */
+  .photos-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+    margin: 0 20px 4px;
+  }
+  .photo-item { position: relative; aspect-ratio: 1; overflow: hidden; background: var(--surface); }
+  .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-item .remove-photo {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+    background: rgba(0,0,0,.7); border: none; color: #fff; font-size: 12px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+  }
+  .photo-count {
+    font-family: var(--font-mono); font-size: .6rem; color: var(--fg2);
+    letter-spacing: .1em; margin: 8px 20px 0; text-align: right;
+  }
+  .add-more-btn {
+    margin: 8px 20px 0; background: none; border: 1px solid var(--border);
+    color: var(--fg2); font-family: var(--font-mono); font-size: .6rem;
+    letter-spacing: .12em; padding: 8px; cursor: pointer; width: calc(100% - 40px);
+    transition: border-color .2s, color .2s; text-transform: uppercase;
+  }
+  .add-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .add-more-input { display: none; }
+
+  /* ── FORM ── */
+  .form-section { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-family: var(--font-mono); font-size: .6rem; letter-spacing: .15em;
+    color: var(--fg2); text-transform: uppercase;
+  }
+  .field input, .field textarea {
+    background: var(--surface); border: 1px solid var(--border); color: var(--fg);
+    padding: 12px 14px; font-family: var(--font-sans); font-size: .85rem;
+    outline: none; transition: border-color .2s; border-radius: var(--radius);
+    width: 100%;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { resize: none; min-height: 80px; }
+  .field .hint { font-size: .65rem; color: var(--fg2); margin-top: 2px; }
+
+  /* ── SUBMIT BTN ── */
+  .submit-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 12px 20px; background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  .submit-btn {
+    width: 100%; background: var(--accent); border: none; color: #fff;
+    font-family: var(--font-mono); font-size: .7rem; letter-spacing: .2em;
+    text-transform: uppercase; padding: 16px; cursor: pointer;
+    transition: opacity .2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .submit-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .submit-btn .spinner {
+    width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── SUCCESS ── */
+  .success-screen {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; padding: 40px 30px; text-align: center;
+  }
+  .success-icon { font-size: 48px; }
+  .success-title { font-family: var(--font-mono); font-size: 1.1rem; letter-spacing: .1em; }
+  .success-sub { font-size: .8rem; color: var(--fg2); line-height: 1.6; }
+  .new-post-btn {
+    margin-top: 8px; background: none; border: 1px solid var(--accent);
+    color: var(--accent); font-family: var(--font-mono); font-size: .65rem;
+    letter-spacing: .15em; padding: 12px 24px; cursor: pointer;
+    text-transform: uppercase; transition: background .2s, color .2s;
+  }
+  .new-post-btn:hover { background: var(--accent); color: #fff; }
+
+  /* ── ADMIN ── */
+  #admin-screen { background: var(--bg); }
+  .admin-header {
+    display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .admin-title { font-family: var(--font-mono); font-size: .8rem; letter-spacing: .15em; flex: 1; }
+  .admin-badge {
+    font-family: var(--font-mono); font-size: .5rem; background: var(--accent);
+    color: #fff; padding: 3px 8px; letter-spacing: .1em;
+  }
+  .admin-logout {
+    background: none; border: 1px solid var(--border); color: var(--fg2);
+    font-family: var(--font-mono); font-size: .55rem; padding: 5px 10px;
+    cursor: pointer; letter-spacing: .1em;
+  }
+
+  .posts-list { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .post-card {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .post-card-header { display: flex; align-items: flex-start; gap: 12px; }
+  .post-thumb {
+    width: 72px; height: 72px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+  .post-meta { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .post-user { font-family: var(--font-mono); font-size: .65rem; color: var(--accent); }
+  .post-channel { font-size: .7rem; color: var(--fg2); }
+  .post-location { font-size: .7rem; color: var(--fg2); }
+  .post-time { font-family: var(--font-mono); font-size: .55rem; color: var(--fg2); margin-top: 4px; }
+  .post-photos-count { font-family: var(--font-mono); font-size: .55rem; color: var(--fg2); }
+
+  .post-text-edit {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--fg);
+    padding: 10px 12px; font-family: var(--font-sans); font-size: .8rem;
+    outline: none; resize: none; min-height: 80px; width: 100%;
+    transition: border-color .2s; border-radius: var(--radius);
+  }
+  .post-text-edit:focus { border-color: var(--accent); }
+
+  .post-schedule { display: flex; flex-direction: column; gap: 8px; }
+  .schedule-label { font-family: var(--font-mono); font-size: .55rem; color: var(--fg2); letter-spacing: .1em; }
+
+  .photos-schedule { display: flex; flex-direction: column; gap: 8px; }
+  .photo-schedule-row {
+    display: flex; align-items: center; gap: 8px; background: var(--surface2);
+    padding: 8px 10px; border: 1px solid var(--border);
+  }
+  .photo-schedule-thumb { width: 40px; height: 40px; object-fit: cover; flex-shrink: 0; }
+  .photo-schedule-num { font-family: var(--font-mono); font-size: .6rem; color: var(--fg2); width: 20px; }
+  .schedule-dt {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--fg);
+    padding: 6px 8px; font-size: .75rem; font-family: var(--font-sans); outline: none;
+    border-radius: var(--radius); min-width: 0;
+  }
+  .schedule-dt:focus { border-color: var(--accent); }
+
+  .post-actions { display: flex; gap: 8px; }
+  .btn-approve {
+    flex: 1; background: var(--accent); border: none; color: #fff;
+    font-family: var(--font-mono); font-size: .6rem; letter-spacing: .12em;
+    padding: 12px 8px; cursor: pointer; text-transform: uppercase; transition: opacity .2s;
+  }
+  .btn-approve:disabled { opacity: .4; }
+  .btn-reject {
+    background: none; border: 1px solid var(--border); color: var(--fg2);
+    font-family: var(--font-mono); font-size: .6rem; letter-spacing: .12em;
+    padding: 12px 16px; cursor: pointer; text-transform: uppercase;
+    transition: border-color .2s, color .2s;
+  }
+  .btn-reject:hover { border-color: #ff4444; color: #ff4444; }
+
+  .status-badge {
+    font-family: var(--font-mono); font-size: .55rem; padding: 3px 8px;
+    letter-spacing: .1em; text-transform: uppercase; align-self: flex-start;
+  }
+  .status-badge.pending { background: #2a2010; color: #f0a020; border: 1px solid #f0a020; }
+  .status-badge.approved { background: #0a2010; color: #20c060; border: 1px solid #20c060; }
+  .status-badge.rejected { background: #2a0a0a; color: #ff4444; border: 1px solid #ff4444; }
+  .status-badge.scheduled { background: #0a1a2a; color: #4090ff; border: 1px solid #4090ff; }
+  .status-badge.sent { background: #1a1a1a; color: var(--fg2); border: 1px solid var(--border); }
+
+  .empty-state {
+    text-align: center; padding: 60px 20px;
+    font-family: var(--font-mono); font-size: .65rem; color: var(--fg2); letter-spacing: .1em;
+  }
+
+  /* ── TABS ── */
+  .admin-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    flex: 1; background: none; border: none; color: var(--fg2);
+    font-family: var(--font-mono); font-size: .6rem; letter-spacing: .12em;
+    padding: 12px 8px; cursor: pointer; text-transform: uppercase; transition: color .2s;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── PW MODAL ── */
+  .pw-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  .pw-modal.open { display: flex; }
+  .pw-box {
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 32px 24px; width: 280px; display: flex; flex-direction: column; gap: 16px;
+  }
+  .pw-title { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .15em; }
+  .pw-input {
+    background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+    padding: 12px 14px; font-family: var(--font-mono); font-size: .9rem;
+    outline: none; letter-spacing: .3em; transition: border-color .2s;
+  }
+  .pw-input:focus { border-color: var(--accent); }
+  .pw-btn {
+    background: var(--accent); border: none; color: #fff;
+    font-family: var(--font-mono); font-size: .65rem; letter-spacing: .15em;
+    padding: 12px; cursor: pointer; text-transform: uppercase;
+  }
+  .pw-err { font-size: .7rem; color: #ff4444; display: none; }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface2); border: 1px solid var(--border); color: var(--fg);
+    font-family: var(--font-mono); font-size: .65rem; letter-spacing: .1em;
+    padding: 10px 20px; opacity: 0; transition: all .3s; pointer-events: none;
+    white-space: nowrap; z-index: 200;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { border-color: var(--accent); color: var(--accent); }
+
+  /* ── PREVIEW MODAL ── */
+  .preview-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9);
+    align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .preview-modal.open { display: flex; }
+  .preview-box {
+    background: var(--surface); border: 1px solid var(--border);
+    width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0;
+  }
+  .preview-header {
+    padding: 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .preview-title { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .15em; }
+  .preview-close {
+    background: none; border: none; color: var(--fg2); font-size: 18px; cursor: pointer;
+  }
+  .preview-img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+  .preview-caption { padding: 12px 16px; font-size: .8rem; line-height: 1.5; color: var(--fg2); }
+
+  .filter-bar { display: flex; gap: 8px; padding: 12px 20px; overflow-x: auto; }
+  .filter-chip {
+    background: none; border: 1px solid var(--border); color: var(--fg2);
+    font-family: var(--font-mono); font-size: .55rem; letter-spacing: .1em;
+    padding: 5px 12px; cursor: pointer; white-space: nowrap; text-transform: uppercase;
+    transition: all .2s; flex-shrink: 0;
+  }
+  .filter-chip.active { border-color: var(--accent); color: var(--accent); }
+
+  .loading-indicator {
+    text-align: center; padding: 40px;
+    font-family: var(--font-mono); font-size: .6rem; color: var(--fg2); letter-spacing: .1em;
+  }
+  .loading-indicator::after {
+    content: ''; display: inline-block; width: 12px; height: 12px;
+    border: 1px solid var(--fg2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .6s linear infinite; margin-left: 8px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<!-- USER SCREEN -->
+<div class="screen active" id="user-screen">
+  <div class="app-header">
+    <div class="logo-wrap" id="logo-tap">
+      <svg class="logo-icon" viewBox="0 0 702 726" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M274.602 7.17398C291.544 -1.21725 308.644 -3.11155 323.123 6.16714C336.288 14.6038 342.849 29.7025 346.474 43.839C352.622 67.8168 352.864 99.6625 351.778 128.158L365.422 97.5685L396.021 104.758L390.356 239.254L604.466 102.825L624.031 127.968L444.476 297.012L701.312 483.837L687.127 512.048L408.091 424.849L427.297 695.045L396.466 702.084L324.463 520.753L260.442 683.682L229.572 678.683C228.206 653.088 226.143 615.889 224.11 581.866C212.422 619.824 201.491 655.466 192.662 684.344L180.021 725.696L162.701 686.074C139.661 633.364 104.292 550.329 73.0402 472.459C42.0724 395.298 14.3395 321.278 7.49137 287.729C-5.66656 223.267 1.14686 177.568 7.94645 159.642C14.4683 135.466 27.4857 100.803 46.1769 75.1525C55.6112 62.2055 67.4941 50.1521 82.048 43.7502C97.5129 36.9476 114.683 37.1477 131.811 46.6769C159.025 61.8185 174.488 89.4803 183.175 117.197C192.228 95.0108 199.898 74.5885 212.39 56.8361C225.869 37.681 244.419 22.1233 274.602 7.17398Z" fill="#FE094F"/>
+      </svg>
+      <span class="logo-text">NEVA<span>STICK</span></span>
+    </div>
+    <span class="header-badge">STREET POST</span>
+  </div>
+
+  <div id="upload-area">
+    <div class="upload-zone" id="upload-zone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <p>Нажми чтобы выбрать фото<br><span style="font-size:.6rem;opacity:.5">Можно несколько сразу</span></p>
+      <input type="file" id="file-input" accept="image/*" multiple>
+    </div>
+  </div>
+
+  <div id="photos-area" style="display:none">
+    <div class="photos-grid" id="photos-grid"></div>
+    <div class="photo-count" id="photo-count"></div>
+    <button class="add-more-btn" id="add-more-btn">+ Добавить ещё фото</button>
+    <input type="file" class="add-more-input" id="add-more-input" accept="image/*" multiple>
+  </div>
+
+  <div class="form-section">
+    <div class="field">
+      <label>Telegram канал / аккаунт</label>
+      <input type="text" id="tg-channel" placeholder="@yourhandle или https://t.me/..." autocomplete="off">
+      <span class="hint">Твой TG канал или профиль</span>
+    </div>
+    <div class="field">
+      <label>Место / локация</label>
+      <input type="text" id="location" placeholder="Санкт-Петербург, Невский пр." autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Комментарий (необязательно)</label>
+      <textarea id="comment" placeholder="Расскажи что-нибудь об этом месте или работе..."></textarea>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <button class="submit-btn" id="submit-btn" disabled>
+      <span id="submit-label">Отправить на модерацию</span>
+    </button>
+  </div>
+</div>
+
+<!-- SUCCESS SCREEN -->
+<div class="screen" id="success-screen">
+  <div class="app-header">
+    <div class="logo-wrap">
+      <svg class="logo-icon" viewBox="0 0 702 726" fill="none"><path d="M274.602 7.17398C291.544 -1.21725 308.644 -3.11155 323.123 6.16714C336.288 14.6038 342.849 29.7025 346.474 43.839C352.622 67.8168 352.864 99.6625 351.778 128.158L365.422 97.5685L396.021 104.758L390.356 239.254L604.466 102.825L624.031 127.968L444.476 297.012L701.312 483.837L687.127 512.048L408.091 424.849L427.297 695.045L396.466 702.084L324.463 520.753L260.442 683.682L229.572 678.683C228.206 653.088 226.143 615.889 224.11 581.866C212.422 619.824 201.491 655.466 192.662 684.344L180.021 725.696L162.701 686.074C139.661 633.364 104.292 550.329 73.0402 472.459C42.0724 395.298 14.3395 321.278 7.49137 287.729C-5.66656 223.267 1.14686 177.568 7.94645 159.642C14.4683 135.466 27.4857 100.803 46.1769 75.1525C55.6112 62.2055 67.4941 50.1521 82.048 43.7502C97.5129 36.9476 114.683 37.1477 131.811 46.6769C159.025 61.8185 174.488 89.4803 183.175 117.197C192.228 95.0108 199.898 74.5885 212.39 56.8361C225.869 37.681 244.419 22.1233 274.602 7.17398Z" fill="#FE094F"/></svg>
+      <span class="logo-text">NEVA<span>STICK</span></span>
+    </div>
+  </div>
+  <div class="success-screen">
+    <div class="success-icon">🎨</div>
+    <div class="success-title">Отправлено!</div>
+    <div class="success-sub">Твои фото с фирменной рамкой NEVASTICK ушли на модерацию.<br>Скоро они появятся в канале.</div>
+    <button class="new-post-btn" id="new-post-btn">Отправить ещё</button>
+  </div>
+</div>
+
+<!-- ADMIN SCREEN -->
+<div class="screen" id="admin-screen">
+  <div class="admin-header">
+    <span class="admin-title">ADMIN PANEL</span>
+    <span class="admin-badge">NEVASTICK</span>
+    <button class="admin-logout" id="admin-logout">Выйти</button>
+  </div>
+  <div class="admin-tabs">
+    <button class="tab-btn active" data-tab="pending">На модерации</button>
+    <button class="tab-btn" data-tab="scheduled">Запланировано</button>
+    <button class="tab-btn" data-tab="sent">Отправлено</button>
+  </div>
+  <div class="filter-bar" id="filter-bar" style="display:none">
+    <button class="filter-chip active" data-status="all">Все</button>
+    <button class="filter-chip" data-status="pending">Ожидают</button>
+    <button class="filter-chip" data-status="scheduled">Запланировано</button>
+    <button class="filter-chip" data-status="sent">Отправлено</button>
+    <button class="filter-chip" data-status="rejected">Отклонено</button>
+  </div>
+  <div class="posts-list" id="posts-list">
+    <div class="loading-indicator">Загрузка постов</div>
+  </div>
+</div>
+
+<!-- PW MODAL -->
+<div class="pw-modal" id="pw-modal">
+  <div class="pw-box">
+    <div class="pw-title">ADMIN ACCESS</div>
+    <input class="pw-input" type="password" id="pw-input" placeholder="••••" maxlength="20">
+    <span class="pw-err" id="pw-err">Неверный пароль</span>
+    <button class="pw-btn" id="pw-submit">Войти</button>
+  </div>
+</div>
+
+<!-- PREVIEW MODAL -->
+<div class="preview-modal" id="preview-modal">
+  <div class="preview-box">
+    <div class="preview-header">
+      <span class="preview-title">ПРЕДПРОСМОТР</span>
+      <button class="preview-close" id="preview-close">✕</button>
+    </div>
+    <img id="preview-img" class="preview-img" src="" alt="">
+    <div class="preview-caption" id="preview-caption"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Hidden canvas for frame compositing -->
+<canvas id="compose-canvas" style="display:none"></canvas>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONFIG — заменить при деплое
+// ═══════════════════════════════════════════════════
+const API_BASE = '';  // e.g. https://nevabot.vercel.app/api
+const ADMIN_PASSWORD = window.NEVABOT_ADMIN_PW || 'neva2025';
+
+// ═══════════════════════════════════════════════════
+//  TELEGRAM WEB APP INIT
+// ═══════════════════════════════════════════════════
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  document.documentElement.style.setProperty('--tg-safe-bottom', tg.viewportStableHeight ? '0px' : '0px');
+}
+const tgUser = tg?.initDataUnsafe?.user || { id: 0, first_name: 'Гость', username: '' };
+
+// ═══════════════════════════════════════════════════
+//  FRAME SVG (встроена — не нужен отдельный файл)
+// ═══════════════════════════════════════════════════
+const FRAME_SVG = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M949 0C977.167 0 1000 22.8335 1000 51V949C1000 977.167 977.167 1000 949 1000H51L50.3408 999.996C22.4781 999.643 0 976.946 0 949V51C0 23.0535 22.4781 0.356836 50.3408 0.00390625L51 0H949ZM51 13C30.0132 13 13 30.0132 13 51V949C13 969.987 30.0132 987 51 987H949C969.987 987 987 969.987 987 949V51C987 30.0132 969.987 13 949 13H51ZM885.843 820.571C889.558 818.731 893.992 818.007 897.947 820.542C901.41 822.761 902.901 826.549 903.642 829.436C904.446 832.571 904.752 836.286 904.817 839.975L912.608 841.806L911.735 862.521L948.256 839.251L954.981 847.894L923.174 877.838L969.366 911.438L964.49 921.137L915.146 905.716L918.523 953.231L907.926 955.651L896.608 927.152L886.782 952.16L876.172 950.442C876.121 949.488 876.061 948.448 876.001 947.344C875.473 949.069 874.969 950.711 874.498 952.251L869.757 967.759L863.262 952.9C858.893 942.906 852.188 927.163 846.26 912.393C840.438 897.888 835.063 883.593 833.701 876.921C831.165 864.497 832.349 855.308 833.873 851.162C835.17 846.41 837.738 839.556 841.532 834.349C843.464 831.698 846.09 828.947 849.526 827.436C853.304 825.774 857.531 825.858 861.585 828.113C865.262 830.159 867.909 833.179 869.818 836.491C870.715 834.562 871.723 832.678 872.958 830.923C875.859 826.8 879.801 823.564 885.843 820.571ZM891.168 831.325C886.46 833.657 884.258 835.715 882.771 837.828C881.071 840.245 880.054 842.997 878.04 847.904C876.018 852.833 875.174 857.625 874.886 860.474C874.856 861.402 874.805 862.268 874.736 863.052L862.76 862.525C862.76 861.809 862.803 860.88 862.901 859.782C862.977 856.631 862.717 852.496 861.754 848.582C860.499 843.479 858.395 840.071 855.751 838.6C854.978 838.17 854.697 838.27 854.357 838.42C853.676 838.72 852.571 839.576 851.23 841.416C848.568 845.07 846.453 850.541 845.379 854.577L845.284 854.932L845.147 855.272C844.689 856.413 843.158 863.25 845.459 874.521C846.554 879.887 851.418 893.028 857.396 907.923C860.808 916.422 864.485 925.257 867.816 933.113C870.759 923.544 874.052 912.877 877.051 903.256C879.453 895.55 881.669 888.501 883.364 883.223C884.211 880.587 884.934 878.371 885.488 876.728C885.764 875.909 886.007 875.204 886.208 874.65C886.358 874.238 886.613 873.539 886.891 872.994C888.074 870.674 891.997 860.146 892.606 848.777C892.943 842.5 893.014 836.301 892.018 832.416C891.869 831.836 891.72 831.42 891.599 831.127C891.474 831.18 891.33 831.245 891.168 831.325ZM900.353 871.377C899.293 874.62 898.268 877.098 897.579 878.448C897.703 878.205 897.698 878.166 897.49 878.739C897.334 879.171 897.123 879.779 896.859 880.562C896.333 882.122 895.63 884.273 894.79 886.891C893.111 892.12 890.907 899.131 888.508 906.827C887.429 910.289 886.311 913.888 885.186 917.522C885.24 918.171 885.302 918.928 885.363 919.767C885.469 921.207 885.584 922.928 885.706 924.823L891.464 910.171L896.556 897.212L901.694 910.153L905.03 918.555L903.602 898.451L903.03 890.405L910.729 892.812L935.851 900.661L911.338 882.831L906.198 879.093L899.858 883.133L900.302 872.596L900.353 871.377Z" fill="#FE094F"/></svg>`;
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let photos = [];       // {file, previewUrl, framedBlob}
+let isAdmin = false;
+let adminTab = 'pending';
+let _tapCount = 0, _tapTimer = null;
+
+// ═══════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function toast(msg, isErr = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 2500);
+}
+function api(path, opts = {}) {
+  return fetch(API_BASE + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts
+  }).then(r => r.json());
+}
+
+// ═══════════════════════════════════════════════════
+//  FRAME COMPOSITING (canvas, client-side)
+// ═══════════════════════════════════════════════════
+async function applyFrame(file) {
+  return new Promise((resolve) => {
+    const canvas = document.getElementById('compose-canvas');
+    const ctx = canvas.getContext('2d');
+    const SIZE = 1000;
+    canvas.width = SIZE; canvas.height = SIZE;
+
+    const img = new Image();
+    img.onload = () => {
+      // Draw photo (crop to square, centered)
+      const scale = SIZE / Math.min(img.width, img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+
+      // Draw SVG frame on top
+      const svgBlob = new Blob([FRAME_SVG], {type: 'image/svg+xml'});
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const frameImg = new Image();
+      frameImg.onload = () => {
+        ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
+        URL.revokeObjectURL(svgUrl);
+        canvas.toBlob(resolve, 'image/jpeg', 0.92);
+      };
+      frameImg.src = svgUrl;
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  PHOTO HANDLING
+// ═══════════════════════════════════════════════════
+async function addPhotos(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const framedBlob = await applyFrame(file);
+    const previewUrl = URL.createObjectURL(framedBlob);
+    photos.push({ file, previewUrl, framedBlob });
+  }
+  renderPhotos();
+}
+
+function renderPhotos() {
+  const grid = document.getElementById('photos-grid');
+  grid.innerHTML = '';
+  photos.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-item';
+    div.innerHTML = `<img src="${p.previewUrl}">
+      <button class="remove-photo" data-i="${i}">✕</button>`;
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('.remove-photo').forEach(btn => {
+    btn.onclick = () => { photos.splice(+btn.dataset.i, 1); renderPhotos(); };
+  });
+  document.getElementById('photo-count').textContent = `${photos.length} фото выбрано`;
+  document.getElementById('photos-area').style.display = photos.length ? '' : 'none';
+  document.getElementById('upload-area').style.display = photos.length ? 'none' : '';
+  validateForm();
+}
+
+// ═══════════════════════════════════════════════════
+//  FORM VALIDATION
+// ═══════════════════════════════════════════════════
+function validateForm() {
+  const ok = photos.length > 0 &&
+    document.getElementById('tg-channel').value.trim() &&
+    document.getElementById('location').value.trim();
+  document.getElementById('submit-btn').disabled = !ok;
+}
+['tg-channel', 'location', 'comment'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', validateForm)
+);
+
+// ═══════════════════════════════════════════════════
+//  SUBMIT
+// ═══════════════════════════════════════════════════
+document.getElementById('submit-btn').onclick = async () => {
+  const btn = document.getElementById('submit-btn');
+  const label = document.getElementById('submit-label');
+  btn.disabled = true;
+  label.innerHTML = '<span class="spinner"></span> Отправка...';
+
+  try {
+    const fd = new FormData();
+    fd.append('tg_user_id', tgUser.id);
+    fd.append('tg_username', tgUser.username || tgUser.first_name || '');
+    fd.append('channel', document.getElementById('tg-channel').value.trim());
+    fd.append('location', document.getElementById('location').value.trim());
+    fd.append('comment', document.getElementById('comment').value.trim());
+    photos.forEach((p, i) => fd.append(`photo_${i}`, p.framedBlob, `photo_${i}.jpg`));
+    fd.append('photo_count', photos.length);
+
+    const res = await fetch(API_BASE + '/submit', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка');
+
+    showScreen('success-screen');
+    photos = [];
+  } catch (e) {
+    toast('Ошибка: ' + e.message, true);
+    btn.disabled = false;
+    label.textContent = 'Отправить на модерацию';
+  }
+};
+
+document.getElementById('new-post-btn').onclick = () => {
+  document.getElementById('tg-channel').value = '';
+  document.getElementById('location').value = '';
+  document.getElementById('comment').value = '';
+  photos = [];
+  renderPhotos();
+  showScreen('user-screen');
+};
+
+// ═══════════════════════════════════════════════════
+//  FILE INPUTS
+// ═══════════════════════════════════════════════════
+document.getElementById('file-input').onchange = e => addPhotos(e.target.files);
+document.getElementById('add-more-btn').onclick = () => document.getElementById('add-more-input').click();
+document.getElementById('add-more-input').onchange = e => addPhotos(e.target.files);
+
+// ═══════════════════════════════════════════════════
+//  ADMIN LOGIN — double tap logo
+// ═══════════════════════════════════════════════════
+document.getElementById('logo-tap').onclick = () => {
+  _tapCount++;
+  clearTimeout(_tapTimer);
+  if (_tapCount >= 2) { _tapCount = 0; openPwModal(); return; }
+  _tapTimer = setTimeout(() => _tapCount = 0, 400);
+};
+
+function openPwModal() { document.getElementById('pw-modal').classList.add('open'); setTimeout(() => document.getElementById('pw-input').focus(), 100); }
+document.getElementById('pw-submit').onclick = checkPw;
+document.getElementById('pw-input').onkeydown = e => { if (e.key === 'Enter') checkPw(); };
+function checkPw() {
+  const val = document.getElementById('pw-input').value;
+  if (val === ADMIN_PASSWORD) {
+    isAdmin = true;
+    document.getElementById('pw-modal').classList.remove('open');
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-err').style.display = 'none';
+    showScreen('admin-screen');
+    loadAdminPosts();
+  } else {
+    document.getElementById('pw-err').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+document.getElementById('pw-modal').onclick = e => {
+  if (e.target === document.getElementById('pw-modal')) document.getElementById('pw-modal').classList.remove('open');
+};
+document.getElementById('admin-logout').onclick = () => { isAdmin = false; showScreen('user-screen'); };
+
+// ═══════════════════════════════════════════════════
+//  ADMIN TABS
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    adminTab = btn.dataset.tab;
+    loadAdminPosts();
+  };
+});
+
+// ═══════════════════════════════════════════════════
+//  ADMIN POSTS LOAD
+// ═══════════════════════════════════════════════════
+async function loadAdminPosts() {
+  const list = document.getElementById('posts-list');
+  list.innerHTML = '<div class="loading-indicator">Загрузка постов</div>';
+  try {
+    const data = await api('/posts?tab=' + adminTab);
+    renderAdminPosts(data.posts || []);
+  } catch (e) {
+    list.innerHTML = '<div class="empty-state">Ошибка загрузки</div>';
+  }
+}
+
+const STATUS_LABELS = { pending: 'На модерации', scheduled: 'Запланировано', sent: 'Отправлено', rejected: 'Отклонено' };
+
+function renderAdminPosts(posts) {
+  const list = document.getElementById('posts-list');
+  if (!posts.length) { list.innerHTML = '<div class="empty-state">Постов нет</div>'; return; }
+  list.innerHTML = '';
+  posts.forEach(post => {
+    const card = document.createElement('div');
+    card.className = 'post-card';
+    const phArr = post.photos || [];
+    const thumb = phArr[0]?.url || '';
+    const dt = new Date(post.created_at).toLocaleString('ru-RU');
+
+    // Build per-photo schedule rows
+    const scheduleRows = phArr.map((ph, i) => `
+      <div class="photo-schedule-row">
+        <span class="photo-schedule-num">${i+1}</span>
+        <img class="photo-schedule-thumb" src="${ph.url}" alt="">
+        <input class="schedule-dt" type="datetime-local" id="dt_${post.id}_${i}"
+          value="${ph.scheduled_at || ''}" min="${new Date().toISOString().slice(0,16)}">
+      </div>`).join('');
+
+    card.innerHTML = `
+      <div class="post-card-header">
+        ${thumb ? `<img class="post-thumb" src="${thumb}" alt="" style="cursor:pointer" data-post-id="${post.id}" data-img="${thumb}">` : ''}
+        <div class="post-meta">
+          <span class="post-user">@${post.tg_username || post.tg_user_id}</span>
+          <span class="post-channel">${post.channel}</span>
+          <span class="post-location">📍 ${post.location}</span>
+          <span class="post-time">${dt}</span>
+          <span class="post-photos-count">${phArr.length} фото</span>
+        </div>
+      </div>
+      <span class="status-badge ${post.status}">${STATUS_LABELS[post.status] || post.status}</span>
+      ${post.comment ? `<div style="font-size:.75rem;color:var(--fg2);font-style:italic">"${post.comment}"</div>` : ''}
+      <textarea class="post-text-edit" id="text_${post.id}" rows="4" placeholder="Текст поста для канала...">${post.caption || buildCaption(post)}</textarea>
+      ${post.status === 'pending' ? `
+        <div class="post-schedule">
+          <div class="schedule-label">📅 Время отправки для каждого фото</div>
+          <div class="photos-schedule">${scheduleRows}</div>
+        </div>
+        <div class="post-actions">
+          <button class="btn-approve" data-id="${post.id}">✓ Одобрить и запланировать</button>
+          <button class="btn-reject" data-id="${post.id}">✕</button>
+        </div>` : ''}
+    `;
+    list.appendChild(card);
+
+    // Preview on thumb click
+    card.querySelectorAll('[data-img]').forEach(el => {
+      el.onclick = () => {
+        document.getElementById('preview-img').src = el.dataset.img;
+        document.getElementById('preview-caption').textContent = document.getElementById('text_' + post.id)?.value || '';
+        document.getElementById('preview-modal').classList.add('open');
+      };
+    });
+
+    // Approve
+    card.querySelector('.btn-approve')?.addEventListener('click', async () => {
+      const btn = card.querySelector('.btn-approve');
+      btn.disabled = true; btn.textContent = 'Планирование...';
+      const caption = document.getElementById('text_' + post.id)?.value || '';
+      const schedule = phArr.map((_, i) => document.getElementById(`dt_${post.id}_${i}`)?.value || '').filter(Boolean);
+      if (!schedule.length) { toast('Укажи время хотя бы для одного фото', true); btn.disabled = false; btn.textContent = '✓ Одобрить и запланировать'; return; }
+      try {
+        await api('/approve', { method: 'POST', body: JSON.stringify({ post_id: post.id, caption, schedule }) });
+        toast('Пост запланирован!');
+        loadAdminPosts();
+      } catch(e) { toast('Ошибка: ' + e.message, true); btn.disabled = false; btn.textContent = '✓ Одобрить и запланировать'; }
+    });
+
+    // Reject
+    card.querySelector('.btn-reject')?.addEventListener('click', async () => {
+      await api('/reject', { method: 'POST', body: JSON.stringify({ post_id: post.id }) });
+      toast('Пост отклонён');
+      loadAdminPosts();
+    });
+  });
+}
+
+function buildCaption(post) {
+  let text = '';
+  if (post.comment) text += post.comment + '\n\n';
+  text += `📍 ${post.location}\n`;
+  if (post.channel) text += `👤 ${post.channel}\n`;
+  text += '\n#nevastick #streetart #spb';
+  return text;
+}
+
+// ═══════════════════════════════════════════════════
+//  PREVIEW MODAL
+// ═══════════════════════════════════════════════════
+document.getElementById('preview-close').onclick = () => document.getElementById('preview-modal').classList.remove('open');
+
+// ═══════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════
+// Pre-fill username if known
+if (tgUser.username) document.getElementById('tg-channel').value = '@' + tgUser.username;
+validateForm();
+</script>
+</body>
+</html>
